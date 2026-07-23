@@ -27,9 +27,9 @@ services:
     volumes:
       - ./backend/app:/code/app
 
-  worker:
+  worker-ingestion:
     build: ./backend
-    command: celery -A app.celery_app worker --loglevel=info
+    command: celery -A app.celery_app worker -Q ingestion --loglevel=info -n ingestion@%h
     env_file: ./backend/.env
     environment:
       - DATA_DIR=/code/data
@@ -39,6 +39,36 @@ services:
       - ./backend/app:/code/app
       - ./data:/code/data:ro
       - db-data:/code/var/db
+
+  worker-weekly:
+    build: ./backend
+    command: celery -A app.celery_app worker -Q reports-weekly --loglevel=info -n weekly@%h
+    env_file: ./backend/.env
+    environment:
+      - DATA_DIR=/code/data
+    depends_on:
+      - redis
+    volumes:
+      - ./backend/app:/code/app
+      - ./backend/reports:/code/reports
+      - ./data:/code/data:ro
+      - db-data:/code/var/db
+      - reports-data:/code/var/reports
+
+  worker-monthly:
+    build: ./backend
+    command: celery -A app.celery_app worker -Q reports-monthly --loglevel=info -n monthly@%h
+    env_file: ./backend/.env
+    environment:
+      - DATA_DIR=/code/data
+    depends_on:
+      - redis
+    volumes:
+      - ./backend/app:/code/app
+      - ./backend/reports:/code/reports
+      - ./data:/code/data:ro
+      - db-data:/code/var/db
+      - reports-data:/code/var/reports
 
   beat:
     build: ./backend
@@ -54,3 +84,4 @@ services:
 
 volumes:
   db-data:
+  reports-data:
