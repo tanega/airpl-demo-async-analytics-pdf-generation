@@ -74,6 +74,7 @@ Un référentiel unique doit être matérialisé une fois au démarrage (job d'i
 | Orchestration des tâches | **Celery** | Standard mature pour tâches asynchrones distribuées en Python |
 | Planification | **Celery Beat** | Gestion des jobs périodiques (génération horaire, quotidienne, hebdomadaire) sans cron externe |
 | Broker + result backend | **Redis** | Simplicité de déploiement (un seul service pour les deux rôles), suffisant pour la volumétrie visée |
+| Base de données | **SQLite** (fichier sur volume Docker partagé) | Pas de serveur DB séparé à opérer pour la démo ; fichier partagé en lecture/écriture entre les workers ingestion/hebdo/mensuel. Concurrence en écriture limitée — à reconsidérer (Postgres) si plusieurs workers écrivent au même instant à fort volume |
 | Génération de PDF | **Quarto** (+ Typst comme moteur de rendu) | Exécution native de code Python, rendu intégré des graphiques/tables, rapports paramétrés via YAML |
 | Visualisations | matplotlib / plotly (export statique via kaleido), geopandas pour les cartes | Rendu statique compatible PDF |
 | Stockage des fichiers | Local (démo) / MinIO ou S3 (évolution) | Découplage stockage/workers si besoin de montée en charge |
@@ -138,12 +139,10 @@ flowchart TB
 ```
 
 **Flux de génération d'un rapport :**
-1. Celery Beat déclenche (ou l'API reçoit une demande manuelle) une tâche de génération.
-2. Le worker récupère les données agrégées pertinentes selon la période demandée.
-3. Les données sont écrites dans un format lisible par le template Quarto (JSON/CSV/Parquet).
-4. Le worker appelle `quarto render report_template.qmd -P data_path:... -P date:... --to typst`.
-5. Le PDF généré est déplacé vers le stockage, son chemin et ses métadonnées enregistrés.
-6. Le statut de la tâche est mis à jour dans Redis (result backend) et consultable via l'API.
+1. Celery Beat déclenche (ou l'API reçoit une demande manuelle) une tâche de génération, sur la queue dédiée (`reports-weekly` ou `reports-monthly`).
+2. Le worker calcule la période (7 jours glissants, ou mois courant) et appelle `quarto render report_template.qmd -P start_date:... -P end_date:... --to typst` — le template lit directement `hourly_readings`/`communes` en SQLite, pas d'export intermédiaire.
+3. Le PDF est rendu à côté du template puis déplacé vers le stockage (`var/reports/`, volume Docker partagé) — Épic 6 ajoutera métadonnées et traçabilité.
+4. Le statut de la tâche est mis à jour dans Redis (result backend) et consultable via l'API.
 
 ## 6. Épics pour la roadmap
 
@@ -157,7 +156,7 @@ Construction du référentiel communal (job d'init, cf. §3.4) à partir de `com
 Conception du template `.qmd` unique et paramétré : structure du rapport, table des données, graphiques d'évolution de l'indice ATMO. Carte statique en choroplèthe (geopandas, jointure `code_zone`/`insee_code` sur le référentiel communal Pays de la Loire) — limiter l'affichage aux communes couvertes par une valeur d'indice (§3.1) et griser/exclure les autres. Validation du rendu PDF via Typst.
 
 ### Épic 4 — Orchestration des tâches de génération
-Implémentation des tâches Celery pour le rapport quotidien (agrégation horaire) et hebdomadaire (agrégation quotidienne), configuration de Celery Beat, gestion des queues dédiées par type de tâche.
+Tâches Celery pour le rapport hebdomadaire (7 derniers jours complets) et mensuel (mois courant — même template que l'hebdo, période élargie ; §2), Celery Beat (lundi 2h / 1er du mois 3h), queues dédiées par type de tâche (`ingestion`, `reports-weekly`, `reports-monthly`) avec un worker Docker par queue. Intégration de Quarto + Typst dans l'image Docker backend (tarball CLI, pas de paquet système).
 
 ### Épic 5 — API REST
 Endpoints FastAPI : déclenchement manuel, consultation de l'historique, suivi du statut d'une tâche, récupération du PDF généré. Documentation OpenAPI.

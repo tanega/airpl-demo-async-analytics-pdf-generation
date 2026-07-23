@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## État du projet
 
-**`ROADMAP.md` est la source de vérité** pour l'architecture cible, la stack et le découpage en épics — le lire avant toute implémentation. Épics 1 (socle) et 2 (référentiel + pipeline horaire) implémentés dans `backend/`.
+**`ROADMAP.md` est la source de vérité** pour l'architecture cible, la stack et le découpage en épics — le lire avant toute implémentation. Épics 1 (socle), 2 (référentiel + pipeline horaire), 3 (template Quarto) et 4 (orchestration Celery) implémentés dans `backend/`.
 
 Résumé : démo backend qui génère automatiquement des rapports PDF (hebdo/mensuel) à partir de données quotidiennes, via un pipeline asynchrone distribué (FastAPI + Celery + Redis + Quarto/Typst). Voir `ROADMAP.md` §1-2 pour le périmètre exact, §4 pour la stack et les alternatives écartées, §5 pour le schéma d'architecture, §6 pour les épics.
 
@@ -36,9 +36,18 @@ curl http://api.localhost/health       # via Traefik
 
 Le référentiel communal (SQLite, `backend/var/db/reports.db`) est reconstruit automatiquement au démarrage de chaque worker (signal `worker_ready`, cf. `app/tasks/bootstrap.py`) — pas d'étape manuelle nécessaire.
 
+### Orchestration des rapports (Épic 4)
+
+Trois queues Celery dédiées, un worker Docker par queue (cf. `docker-compose.yml`) :
+- `ingestion` (`worker-ingestion`) — `tasks.generate_hourly_readings`, planifiée chaque heure.
+- `reports-weekly` (`worker-weekly`) — `tasks.generate_weekly_report` (7 derniers jours complets), lundi 2h.
+- `reports-monthly` (`worker-monthly`) — `tasks.generate_monthly_report` (mois courant), 1er du mois 3h.
+
+`app/tasks/reports.py` appelle `quarto` en subprocess puis déplace le PDF vers `var/reports/` avec `shutil.move` (pas un simple rename : `reports/` et `var/reports/` sont deux volumes Docker distincts, un rename direct échoue en cross-device). Pas encore de métadonnées/traçabilité sur ces PDFs (prévu Épic 6).
+
 ### Rendu des rapports Quarto (Épic 3)
 
-Quarto CLI + Typst ne sont pas dans `requirements.txt` (ce sont des binaires, pas des paquets Python) et ne sont pas encore intégrés à l'image Docker (prévu Épic 4). Pour rendre `backend/reports/report_template.qmd` en local :
+Quarto CLI + Typst sont installés dans l'image Docker backend (tarball CLI téléchargé dans le `Dockerfile`, Typst est bundlé par Quarto — pas de paquet système séparé). Pour rendre `backend/reports/report_template.qmd` en local, hors Docker :
 
 ```bash
 # une fois : binaires hors du repo, sans sudo
