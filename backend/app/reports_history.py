@@ -43,6 +43,7 @@ def record_run(
 
 
 def list_runs(report_type: str | None = None, limit: int = 50) -> list[dict]:
+    init_db()
     conn = get_connection()
     try:
         query = "SELECT * FROM report_runs"
@@ -54,5 +55,15 @@ def list_runs(report_type: str | None = None, limit: int = 50) -> list[dict]:
         params = (*params, limit)
         rows = conn.execute(query, params).fetchall()
         return [dict(row) for row in rows]
+    finally:
+        conn.close()
+
+
+def get_run(run_id: int) -> dict | None:
+    init_db()
+    conn = get_connection()
+    try:
+        row = conn.execute("SELECT * FROM report_runs WHERE id = ?", (run_id,)).fetchone()
+        return dict(row) if row else None
     finally:
         conn.close()

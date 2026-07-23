@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## État du projet
 
-**`ROADMAP.md` est la source de vérité** pour l'architecture cible, la stack et le découpage en épics — le lire avant toute implémentation. Épics 1 (socle), 2 (référentiel + pipeline horaire), 3 (template Quarto), 4 (orchestration Celery) et 6 (traçabilité) implémentés dans `backend/`.
+**`ROADMAP.md` est la source de vérité** pour l'architecture cible, la stack et le découpage en épics — le lire avant toute implémentation. Épics 1 (socle), 2 (référentiel + pipeline horaire), 3 (template Quarto), 4 (orchestration Celery), 5 (API REST) et 6 (traçabilité + MinIO) implémentés dans `backend/`.
 
 Résumé : démo backend qui génère automatiquement des rapports PDF (hebdo/mensuel) à partir de données quotidiennes, via un pipeline asynchrone distribué (FastAPI + Celery + Redis + Quarto/Typst). Voir `ROADMAP.md` §1-2 pour le périmètre exact, §4 pour la stack et les alternatives écartées, §5 pour le schéma d'architecture, §6 pour les épics.
 
@@ -49,7 +49,19 @@ Trois queues Celery dédiées, un worker Docker par queue (cf. `docker-compose.y
 
 `app/storage.py` upload chaque PDF vers MinIO (bucket `reports`, créé à la volée par `_ensure_bucket`) via boto3, endpoint S3-compatible. Le PDF rendu localement (`var/reports/`) n'est qu'un fichier de passage : uploadé puis supprimé (`Path.unlink()`) — MinIO est la seule copie durable. En local hors Docker, `S3_ENDPOINT_URL` par défaut pointe sur `http://localhost:9000` (MinIO du compose expose ce port sur l'hôte) ; en conteneur, les workers weekly/monthly reçoivent `S3_ENDPOINT_URL=http://minio:9000` (`docker-compose.yml`).
 
-Table `report_runs` (SQLite, cf. `app/db.py`) : un enregistrement par exécution de `generate_weekly_report`/`generate_monthly_report` — `report_type`, `period_start`/`period_end`, `status` (`success`/`failed`), `started_at`, `duration_seconds`, `storage_location` (URI `s3://bucket/clé`, pas un chemin local), `file_size_bytes`, `error_message`. Écrit par `app/reports_history.record_run()` (succès **et** échecs — l'exception est aussi re-levée pour que Celery reflète l'échec). Lecture via `list_runs()`, pensé pour être consommé par l'endpoint d'historique de l'Épic 5 (pas encore implémenté).
+Table `report_runs` (SQLite, cf. `app/db.py`) : un enregistrement par exécution de `generate_weekly_report`/`generate_monthly_report` — `report_type`, `period_start`/`period_end`, `status` (`success`/`failed`), `started_at`, `duration_seconds`, `storage_location` (URI `s3://bucket/clé`, pas un chemin local), `file_size_bytes`, `error_message`. Écrit par `app/reports_history.record_run()` (succès **et** échecs — l'exception est aussi re-levée pour que Celery reflète l'échec). Lecture via `list_runs()`/`get_run()`, consommées par l'API (Épic 5).
+
+**Piège docker-compose** : le service `api` doit monter le même volume `db-data:/code/var/db` que les workers, sinon il lit une SQLite vide (chacun sa propre copie éphémère sinon). Pareil pour `S3_ENDPOINT_URL` — l'API en a besoin pour signer les URLs de téléchargement.
+
+### API REST (Épic 5)
+
+`app/api/reports.py` (monté sur `/reports` dans `app/main.py`) :
+- `POST /reports/weekly`, `POST /reports/monthly` (`?reference_date=YYYY-MM-DD` optionnel) — déclenchement manuel, retourne `{task_id}` (202).
+- `GET /reports/tasks/{task_id}` — statut Celery (`PENDING`/`SUCCESS`/`FAILURE`, résultat ou erreur).
+- `GET /reports/history` (`?report_type=weekly|monthly&limit=`) — historique `report_runs`.
+- `GET /reports/{run_id}/download` — URL présignée MinIO (404 si `run_id` inconnu, 409 si pas encore réussi).
+
+Doc OpenAPI auto-générée sur `/docs`. Piège corrigé : `presigned_url_for()` signe avec `s3_public_endpoint_url` (défaut `http://localhost:9000`), **pas** `s3_endpoint_url` (`http://minio:9000` en conteneur) — signer une URL est une opération locale (pas d'appel réseau), mais `minio:9000` n'est résoluble que dans le réseau Docker ; un lien de téléchargement doit rester utilisable par un client externe.
 
 ### Rendu des rapports Quarto (Épic 3)
 
