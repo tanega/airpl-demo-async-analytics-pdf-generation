@@ -36,6 +36,24 @@ curl http://api.localhost/health       # via Traefik
 
 Le référentiel communal (SQLite, `backend/var/db/reports.db`) est reconstruit automatiquement au démarrage de chaque worker (signal `worker_ready`, cf. `app/tasks/bootstrap.py`) — pas d'étape manuelle nécessaire.
 
+### Rendu des rapports Quarto (Épic 3)
+
+Quarto CLI + Typst ne sont pas dans `requirements.txt` (ce sont des binaires, pas des paquets Python) et ne sont pas encore intégrés à l'image Docker (prévu Épic 4). Pour rendre `backend/reports/report_template.qmd` en local :
+
+```bash
+# une fois : binaires hors du repo, sans sudo
+curl -sL -o /tmp/quarto.tar.gz "https://github.com/quarto-dev/quarto-cli/releases/download/v1.9.38/quarto-1.9.38-macos.tar.gz"
+tar -xzf /tmp/quarto.tar.gz -C "$HOME/.local/opt"   # -> $HOME/.local/opt/bin/quarto
+brew install typst   # formule, pas de cask -> pas de sudo
+
+cd backend
+export PATH="$HOME/.local/opt/bin:$PATH"
+export QUARTO_PYTHON="$(pwd)/.venv/bin/python3"   # sinon quarto ne trouve pas jupyter/pandas/geopandas
+quarto render reports/report_template.qmd --to typst -P start_date:2026-07-16 -P end_date:2026-07-22
+```
+
+Le kernel Jupyter s'exécute avec `cwd=backend/reports/`, pas `backend/` — le template neutralise ça lui-même (ajout de `backend/` à `sys.path`, `DB_PATH`/`DATA_DIR` forcés en absolu) ; pas besoin de lancer `quarto` depuis un autre dossier.
+
 ## Données (`/data`)
 
 Trois sources hétérogènes, sans base de données existante — tout est en fichiers plats, à joindre sur le code INSEE commune. Détail complet dans `ROADMAP.md` §3.
