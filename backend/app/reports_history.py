@@ -1,5 +1,4 @@
 from datetime import datetime
-from pathlib import Path
 
 from app.db import get_connection, init_db
 
@@ -11,11 +10,10 @@ def record_run(
     status: str,
     started_at: datetime,
     duration_seconds: float,
-    file_path: str | None = None,
+    storage_location: str | None = None,
+    file_size_bytes: int | None = None,
     error_message: str | None = None,
 ) -> int:
-    file_size_bytes = Path(file_path).stat().st_size if file_path else None
-
     init_db()
     conn = get_connection()
     try:
@@ -23,7 +21,7 @@ def record_run(
             """
             INSERT INTO report_runs (
                 report_type, period_start, period_end, status, started_at,
-                duration_seconds, file_path, file_size_bytes, error_message
+                duration_seconds, storage_location, file_size_bytes, error_message
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
@@ -33,7 +31,7 @@ def record_run(
                 status,
                 started_at.isoformat(),
                 duration_seconds,
-                file_path,
+                storage_location,
                 file_size_bytes,
                 error_message,
             ),

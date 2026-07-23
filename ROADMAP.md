@@ -77,7 +77,7 @@ Un référentiel unique doit être matérialisé une fois au démarrage (job d'i
 | Base de données | **SQLite** (fichier sur volume Docker partagé) | Pas de serveur DB séparé à opérer pour la démo ; fichier partagé en lecture/écriture entre les workers ingestion/hebdo/mensuel. Concurrence en écriture limitée — à reconsidérer (Postgres) si plusieurs workers écrivent au même instant à fort volume |
 | Génération de PDF | **Quarto** (+ Typst comme moteur de rendu) | Exécution native de code Python, rendu intégré des graphiques/tables, rapports paramétrés via YAML |
 | Visualisations | matplotlib / plotly (export statique via kaleido), geopandas pour les cartes | Rendu statique compatible PDF |
-| Stockage des fichiers | Local (démo) / MinIO ou S3 (évolution) | Découplage stockage/workers si besoin de montée en charge |
+| Stockage des fichiers | **MinIO** (S3-compatible, via boto3) | Découplage stockage/workers ; API S3 standard — migration vers un vrai S3 sans changement de code (seul `S3_ENDPOINT_URL` change) |
 | Monitoring des tâches | **Flower** (interne/debug) + endpoints custom FastAPI | Flower pour l'observabilité technique, API custom pour alimenter le futur dashboard |
 | Reverse proxy | **Traefik** | Point d'entrée unique (`api.localhost`), prêt à router le frontend (`/frontend`, à venir) sans reconfiguration de l'API |
 
@@ -123,7 +123,7 @@ flowchart TB
         W3[Worker — rapport mensuel - Quarto]
     end
 
-    STORAGE[(Stockage PDFs — local / S3 / MinIO)]
+    STORAGE[(MinIO — stockage PDFs, S3-compatible)]
 
     BROWSER --> TRAEFIK
     TRAEFIK -->|api.localhost| API1
@@ -162,7 +162,7 @@ Tâches Celery pour le rapport hebdomadaire (7 derniers jours complets) et mensu
 Endpoints FastAPI : déclenchement manuel, consultation de l'historique, suivi du statut d'une tâche, récupération du PDF généré. Documentation OpenAPI.
 
 ### Épic 6 — Stockage et traçabilité
-Modèle de métadonnées (table `report_runs` : date, période, statut, durée, taille, chemin, message d'erreur) alimenté par les tâches Celery de l'Épic 4 — succès et échecs consignés. Stockage des PDFs local (`var/reports/`, cf. Épic 4) ; migration S3/MinIO laissée en évolution (§4, hors périmètre démo). `app/reports_history.py` expose `list_runs()`, prêt à être consommé par l'endpoint d'historique de l'Épic 5.
+Modèle de métadonnées (table `report_runs` : date, période, statut, durée, taille, emplacement, message d'erreur) alimenté par les tâches Celery de l'Épic 4 — succès et échecs consignés. Stockage des PDFs sur **MinIO** (`app/storage.py`, bucket créé à la volée) : le rendu local (`var/reports/`) n'est qu'un fichier de passage, supprimé après upload — MinIO est la seule copie durable. `app/reports_history.py` expose `list_runs()`, prêt à être consommé par l'endpoint d'historique de l'Épic 5 ; celui-ci pourra aussi générer des URLs de téléchargement via `presigned_url` (à ajouter à `app/storage.py` quand l'endpoint existera).
 
 ### Épic 7 — Observabilité
 Intégration de Flower pour le monitoring technique des workers/queues. Mise en place du endpoint de suivi consommable par le futur dashboard (statuts, progress, historique).

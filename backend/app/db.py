@@ -44,7 +44,7 @@ CREATE TABLE IF NOT EXISTS report_runs (
     status TEXT NOT NULL,
     started_at TEXT NOT NULL,
     duration_seconds REAL NOT NULL,
-    file_path TEXT,
+    storage_location TEXT,
     file_size_bytes INTEGER,
     error_message TEXT
 );
