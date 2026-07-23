@@ -1,0 +1,147 @@
+---
+title: "Rapport qualité de l'air — Pays de la Loire"
+format:
+  typst:
+    papersize: a4
+    margin:
+      x: 2cm
+      y: 2cm
+jupyter: python3
+execute:
+  echo: false
+  warning: false
+---
+
+```{python}
+#| tags: [parameters]
+start_date = "2026-07-16"
+end_date = "2026-07-22"
+```
+
+```{python}
+import os
+import sys
+from pathlib import Path
+
+backend_dir = Path.cwd().parent
+sys.path.insert(0, str(backend_dir))
+os.environ.setdefault("DB_PATH", str(backend_dir / "var" / "db" / "reports.db"))
+os.environ.setdefault("DATA_DIR", str(backend_dir.parent / "data"))
+
+import geopandas as gpd
+import matplotlib.pyplot as plt
+import pandas as pd
+from IPython.display import Markdown
+
+from app.core.config import get_settings
+from app.db import get_connection
+
+conn = get_connection()
+readings = pd.read_sql_query(
+    """
+    SELECT hr.insee_code, hr.qualificatif_score, hr.source_date, c.commune_nom, c.dept_nom
+    FROM hourly_readings hr
+    JOIN communes c ON c.insee_code = hr.insee_code
+    WHERE hr.source_date BETWEEN :start_date AND :end_date
+    """,
+    conn,
+    params={"start_date": start_date, "end_date": end_date},
+)
+conn.close()
+```
+
+Période : **`{python} start_date`** → **`{python} end_date`**
+
+```{python}
+#| output: asis
+if readings.empty:
+    print("Aucune donnée disponible pour cette période.")
+```
+
+## Évolution de l'indice
+
+```{python}
+#| fig-cap: "Indice ATMO moyen quotidien (1 = bon, 6 = extrêmement mauvais), région Pays de la Loire"
+daily = (
+    readings.groupby("source_date")
+    .agg(indice_moyen=("qualificatif_score", "mean"), communes_couvertes=("insee_code", "nunique"))
+    .reset_index()
+)
+
+if not daily.empty:
+    fig, ax = plt.subplots(figsize=(6.5, 3))
+    ax.plot(daily["source_date"], daily["indice_moyen"], marker="o", color="#b3541e")
+    ax.set_ylim(1, 6)
+    ax.set_ylabel("Indice moyen")
+    ax.set_xlabel("Date")
+    plt.xticks(rotation=45, ha="right")
+    plt.tight_layout()
+    plt.show()
+```
+
+```{python}
+#| output: asis
+if not daily.empty:
+    table = daily.round(2).rename(
+        columns={
+            "source_date": "Date",
+            "indice_moyen": "Indice moyen",
+            "communes_couvertes": "Communes couvertes",
+        }
+    )
+    display(Markdown(table.to_markdown(index=False)))
+```
+
+## Carte — indice moyen par commune
+
+```{python}
+#| fig-cap: "Indice ATMO moyen par commune sur la période (grisé = pas de donnée)"
+commune_avg = readings.groupby("insee_code")["qualificatif_score"].mean().reset_index()
+
+communes_path = Path(get_settings().data_dir) / "geo" / "communes_pays_de_la_loire.geojson"
+communes = gpd.read_file(communes_path)
+communes = communes.merge(commune_avg, on="insee_code", how="left")
+
+fig, ax = plt.subplots(figsize=(5.5, 5.5))
+communes[communes["qualificatif_score"].isna()].plot(
+    ax=ax, color="#e0e0e0", edgecolor="white", linewidth=0.3
+)
+covered = communes[communes["qualificatif_score"].notna()]
+if not covered.empty:
+    covered.plot(
+        ax=ax,
+        column="qualificatif_score",
+        cmap="YlOrRd",
+        vmin=1,
+        vmax=6,
+        edgecolor="white",
+        linewidth=0.3,
+        legend=True,
+    )
+ax.set_axis_off()
+plt.tight_layout()
+plt.show()
+```
+
+## Communes les plus dégradées
+
+```{python}
+#| output: asis
+worst = (
+    readings.groupby(["insee_code", "commune_nom", "dept_nom"])["qualificatif_score"]
+    .mean()
+    .reset_index()
+    .sort_values("qualificatif_score", ascending=False)
+    .head(10)
+)
+
+if not worst.empty:
+    table = worst.round(2).rename(
+        columns={
+            "commune_nom": "Commune",
+            "dept_nom": "Département",
+            "qualificatif_score": "Indice moyen",
+        }
+    )[["Commune", "Département", "Indice moyen"]]
+    display(Markdown(table.to_markdown(index=False)))
+```
