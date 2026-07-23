@@ -36,18 +36,24 @@ def test_monthly_period_handles_february() -> None:
 def test_generate_report_records_success(monkeypatch, tmp_path) -> None:
     pdf_path = tmp_path / "rapport.pdf"
     pdf_path.write_bytes(b"%PDF-1.4 fake report")
+    expected_size = pdf_path.stat().st_size
+
     monkeypatch.setattr(reports, "_render", lambda start, end, output_name: str(pdf_path))
+    monkeypatch.setattr(
+        reports, "upload_report", lambda local_path, object_key: f"s3://reports/{object_key}"
+    )
 
     result = reports._generate_report("weekly", date(2026, 7, 16), date(2026, 7, 22), "x.pdf")
 
-    assert result["output_path"] == str(pdf_path)
+    assert result["storage_location"] == "s3://reports/x.pdf"
+    assert not pdf_path.exists()
     runs = list_runs("weekly")
     assert len(runs) == 1
     assert runs[0]["status"] == "success"
     assert runs[0]["period_start"] == "2026-07-16"
     assert runs[0]["period_end"] == "2026-07-22"
-    assert runs[0]["file_path"] == str(pdf_path)
-    assert runs[0]["file_size_bytes"] == pdf_path.stat().st_size
+    assert runs[0]["storage_location"] == "s3://reports/x.pdf"
+    assert runs[0]["file_size_bytes"] == expected_size
     assert runs[0]["duration_seconds"] >= 0
     assert runs[0]["error_message"] is None
 
@@ -64,5 +70,5 @@ def test_generate_report_records_failure_and_reraises(monkeypatch) -> None:
     runs = list_runs("weekly")
     assert len(runs) == 1
     assert runs[0]["status"] == "failed"
-    assert runs[0]["file_path"] is None
+    assert runs[0]["storage_location"] is None
     assert "boom" in runs[0]["error_message"]

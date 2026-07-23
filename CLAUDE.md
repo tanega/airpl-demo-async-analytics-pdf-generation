@@ -45,9 +45,11 @@ Trois queues Celery dédiées, un worker Docker par queue (cf. `docker-compose.y
 
 `app/tasks/reports.py` appelle `quarto` en subprocess puis déplace le PDF vers `var/reports/` avec `shutil.move` (pas un simple rename : `reports/` et `var/reports/` sont deux volumes Docker distincts, un rename direct échoue en cross-device).
 
-### Traçabilité des rapports (Épic 6)
+### Traçabilité des rapports + stockage MinIO (Épic 6)
 
-Table `report_runs` (SQLite, cf. `app/db.py`) : un enregistrement par exécution de `generate_weekly_report`/`generate_monthly_report` — `report_type`, `period_start`/`period_end`, `status` (`success`/`failed`), `started_at`, `duration_seconds`, `file_path`, `file_size_bytes`, `error_message`. Écrit par `app/reports_history.record_run()` (succès **et** échecs — l'exception est aussi re-levée pour que Celery reflète l'échec). Lecture via `list_runs()`, pensé pour être consommé par l'endpoint d'historique de l'Épic 5 (pas encore implémenté).
+`app/storage.py` upload chaque PDF vers MinIO (bucket `reports`, créé à la volée par `_ensure_bucket`) via boto3, endpoint S3-compatible. Le PDF rendu localement (`var/reports/`) n'est qu'un fichier de passage : uploadé puis supprimé (`Path.unlink()`) — MinIO est la seule copie durable. En local hors Docker, `S3_ENDPOINT_URL` par défaut pointe sur `http://localhost:9000` (MinIO du compose expose ce port sur l'hôte) ; en conteneur, les workers weekly/monthly reçoivent `S3_ENDPOINT_URL=http://minio:9000` (`docker-compose.yml`).
+
+Table `report_runs` (SQLite, cf. `app/db.py`) : un enregistrement par exécution de `generate_weekly_report`/`generate_monthly_report` — `report_type`, `period_start`/`period_end`, `status` (`success`/`failed`), `started_at`, `duration_seconds`, `storage_location` (URI `s3://bucket/clé`, pas un chemin local), `file_size_bytes`, `error_message`. Écrit par `app/reports_history.record_run()` (succès **et** échecs — l'exception est aussi re-levée pour que Celery reflète l'échec). Lecture via `list_runs()`, pensé pour être consommé par l'endpoint d'historique de l'Épic 5 (pas encore implémenté).
 
 ### Rendu des rapports Quarto (Épic 3)
 

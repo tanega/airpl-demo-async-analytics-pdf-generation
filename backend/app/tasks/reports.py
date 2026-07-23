@@ -6,6 +6,7 @@ from pathlib import Path
 
 from app.celery_app import celery_app
 from app.reports_history import record_run
+from app.storage import upload_report
 
 BACKEND_DIR = Path(__file__).resolve().parent.parent.parent
 TEMPLATE_PATH = BACKEND_DIR / "reports" / "report_template.qmd"
@@ -63,15 +64,18 @@ def _render(start: date, end: date, output_name: str) -> str:
 
 
 def _generate_report(report_type: str, start: date, end: date, output_name: str) -> dict:
-    """Rend le rapport et enregistre sa traçabilité (statut, durée, taille, chemin — §6 ROADMAP.md).
+    """Rend le rapport, l'upload sur MinIO/S3, et enregistre sa traçabilité
+    (statut, durée, taille, emplacement — §6 ROADMAP.md).
 
     Un échec de rendu est à la fois consigné dans `report_runs` (status="failed",
     `error_message`) et propagé, pour que Celery reflète aussi l'échec de la tâche.
+    Le PDF local n'est qu'un fichier de passage : supprimé après upload, MinIO
+    devient la seule copie durable.
     """
     started_at = datetime.now(timezone.utc)
     t0 = time.monotonic()
     try:
-        output_path = _render(start, end, output_name)
+        local_path = _render(start, end, output_name)
     except subprocess.CalledProcessError as exc:
         record_run(
             report_type,
@@ -84,6 +88,10 @@ def _generate_report(report_type: str, start: date, end: date, output_name: str)
         )
         raise
 
+    file_size_bytes = Path(local_path).stat().st_size
+    storage_location = upload_report(Path(local_path), output_name)
+    Path(local_path).unlink()
+
     record_run(
         report_type,
         start.isoformat(),
@@ -91,13 +99,14 @@ def _generate_report(report_type: str, start: date, end: date, output_name: str)
         "success",
         started_at,
         time.monotonic() - t0,
-        file_path=output_path,
+        storage_location=storage_location,
+        file_size_bytes=file_size_bytes,
     )
     return {
         "period": report_type,
         "start_date": start.isoformat(),
         "end_date": end.isoformat(),
-        "output_path": output_path,
+        "storage_location": storage_location,
     }
 
 
