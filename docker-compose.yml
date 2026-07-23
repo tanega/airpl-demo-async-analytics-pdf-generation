@@ -18,6 +18,18 @@ services:
     ports:
       - "6379:6379"
 
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      - MINIO_ROOT_USER=minioadmin
+      - MINIO_ROOT_PASSWORD=minioadmin
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio-data:/data
+
   api:
     build: ./backend
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
@@ -46,14 +58,15 @@ services:
     env_file: ./backend/.env
     environment:
       - DATA_DIR=/code/data
+      - S3_ENDPOINT_URL=http://minio:9000
     depends_on:
       - redis
+      - minio
     volumes:
       - ./backend/app:/code/app
       - ./backend/reports:/code/reports
       - ./data:/code/data:ro
       - db-data:/code/var/db
-      - reports-data:/code/var/reports
 
   worker-monthly:
     build: ./backend
@@ -61,14 +74,15 @@ services:
     env_file: ./backend/.env
     environment:
       - DATA_DIR=/code/data
+      - S3_ENDPOINT_URL=http://minio:9000
     depends_on:
       - redis
+      - minio
     volumes:
       - ./backend/app:/code/app
       - ./backend/reports:/code/reports
       - ./data:/code/data:ro
       - db-data:/code/var/db
-      - reports-data:/code/var/reports
 
   beat:
     build: ./backend
@@ -84,4 +98,4 @@ services:
 
 volumes:
   db-data:
-  reports-data:
+  minio-data:
