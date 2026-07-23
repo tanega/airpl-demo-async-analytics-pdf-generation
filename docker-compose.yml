@@ -34,10 +34,14 @@ services:
     build: ./backend
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
     env_file: ./backend/.env
+    environment:
+      - S3_ENDPOINT_URL=http://minio:9000
     depends_on:
       - redis
+      - minio
     volumes:
       - ./backend/app:/code/app
+      - db-data:/code/var/db
 
   worker-ingestion:
     build: ./backend
