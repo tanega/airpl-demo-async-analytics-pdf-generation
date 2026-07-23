@@ -2,11 +2,17 @@ import csv
 import json
 from pathlib import Path
 
+from app.core.config import get_settings
 from app.db import get_connection, init_db
 
-DATA_DIR = Path(__file__).resolve().parent.parent.parent / "data"
-GEOJSON_PATH = DATA_DIR / "geo" / "communes_pays_de_la_loire.geojson"
-EPCI_CSV_PATH = DATA_DIR / "geo" / "epci_communes_pays_de_la_loire.csv"
+
+def _geojson_path() -> Path:
+    return Path(get_settings().data_dir) / "geo" / "communes_pays_de_la_loire.geojson"
+
+
+def _epci_csv_path() -> Path:
+    return Path(get_settings().data_dir) / "geo" / "epci_communes_pays_de_la_loire.csv"
+
 
 _EPCI_DEFAULTS = {
     "nature_juridique": None,
@@ -18,7 +24,7 @@ _EPCI_DEFAULTS = {
 
 
 def _load_communes_attributes() -> dict[str, dict]:
-    with GEOJSON_PATH.open(encoding="utf-8") as f:
+    with _geojson_path().open(encoding="utf-8") as f:
         geojson = json.load(f)
 
     communes = {}
@@ -42,7 +48,7 @@ def _load_communes_attributes() -> dict[str, dict]:
 
 
 def _enrich_with_epci_population(communes: dict[str, dict]) -> None:
-    with EPCI_CSV_PATH.open(encoding="utf-8") as f:
+    with _epci_csv_path().open(encoding="utf-8") as f:
         reader = csv.DictReader(f, delimiter=";")
         for row in reader:
             commune = communes.get(row["insee"])

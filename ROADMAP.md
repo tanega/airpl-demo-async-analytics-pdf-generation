@@ -78,6 +78,7 @@ Un référentiel unique doit être matérialisé une fois au démarrage (job d'i
 | Visualisations | matplotlib / plotly (export statique via kaleido), geopandas pour les cartes | Rendu statique compatible PDF |
 | Stockage des fichiers | Local (démo) / MinIO ou S3 (évolution) | Découplage stockage/workers si besoin de montée en charge |
 | Monitoring des tâches | **Flower** (interne/debug) + endpoints custom FastAPI | Flower pour l'observabilité technique, API custom pour alimenter le futur dashboard |
+| Reverse proxy | **Traefik** | Point d'entrée unique (`api.localhost`), prêt à router le frontend (`/frontend`, à venir) sans reconfiguration de l'API |
 
 ### Alternatives écartées
 
@@ -85,15 +86,28 @@ Un référentiel unique doit être matérialisé une fois au démarrage (job d'i
 - **RabbitMQ** écarté au profit de Redis pour cette démo : la volumétrie et les besoins de fiabilité ne justifient pas la complexité opérationnelle supplémentaire. À reconsidérer si montée en charge significative ou besoin de routing avancé.
 - **Jinja2 + WeasyPrint** écarté au profit de Quarto : le besoin de cartes/graphiques/tables intégrés rend Quarto plus efficace malgré une installation plus lourde (CLI + moteur Typst).
 
+### Organisation des dossiers
+
+Monorepo `/backend` + `/frontend` :
+- `backend/` — API FastAPI, workers Celery, tests (contenu des épics 1-2, voir §6).
+- `frontend/` — vide pour l'instant, réservé au futur dashboard (Épic 8). Traefik est déjà configuré pour le router (`traefik/dynamic.yml`) une fois un service ajouté à `docker-compose.yml`.
+- `data/` — sources brutes (§3), partagées en lecture seule par les workers backend, hors du dossier `backend/`.
+
 ## 5. Schéma d'architecture
 
 ```mermaid
 flowchart TB
     subgraph Client
-        FE[Frontend dashboard]
+        BROWSER[Navigateur]
     end
 
-    subgraph API["Service API"]
+    TRAEFIK[Traefik — reverse proxy]
+
+    subgraph Frontend["frontend/ (à venir, Épic 8)"]
+        FE[Dashboard]
+    end
+
+    subgraph API["backend/ — Service API"]
         API1[FastAPI]
     end
 
@@ -102,7 +116,7 @@ flowchart TB
         REDIS[(Redis — broker + result backend)]
     end
 
-    subgraph Workers["Workers Celery"]
+    subgraph Workers["Workers Celery — backend/"]
         W1[Worker — génération données quotidiennes]
         W2[Worker — rapport hebdomadaire - Quarto]
         W3[Worker — rapport mensuel - Quarto]
@@ -110,7 +124,9 @@ flowchart TB
 
     STORAGE[(Stockage PDFs — local / S3 / MinIO)]
 
-    FE -->|requêtes REST| API1
+    BROWSER --> TRAEFIK
+    TRAEFIK -->|api.localhost| API1
+    TRAEFIK -.->|à venir| FE
     API1 -->|déclenche / interroge| REDIS
     BEAT -->|planifie| REDIS
     REDIS -->|distribue les tâches| W1
@@ -132,7 +148,7 @@ flowchart TB
 ## 6. Épics pour la roadmap
 
 ### Épic 1 — Socle technique
-Mise en place du squelette du projet : structure des dossiers, `docker-compose` (API, Redis, worker(s), Celery Beat), configuration des environnements, CI minimale.
+Mise en place du squelette du projet : structure des dossiers (`backend/` + `frontend/`, cf. §4), `docker-compose` (Traefik, API, Redis, worker(s), Celery Beat), configuration des environnements, CI minimale.
 
 ### Épic 2 — Référentiel communal et pipeline de données horaires
 Construction du référentiel communal (job d'init, cf. §3.4) à partir de `communes_pays_de_la_loire.geojson` et `epci_communes_pays_de_la_loire.csv`. Génération/simulation des données horaires à partir du CSV ATMO (§3.1), modèle de stockage (DB ou fichiers structurés), tâche Celery périodique associée.
@@ -153,4 +169,4 @@ Mise en place du stockage des PDFs (local puis migration S3/MinIO), modèle de m
 Intégration de Flower pour le monitoring technique des workers/queues. Mise en place du endpoint de suivi consommable par le futur dashboard (statuts, progress, historique).
 
 ### Épic 8 — Préparation du frontend (hors périmètre démo, à cadrer)
-Spécification des contrats d'API nécessaires au dashboard (liste des tâches, détail, actions), maquettage éventuel — chantier séparé de cette démo backend.
+Dossier `frontend/` et routage Traefik déjà en place (cf. §4). Reste à cadrer séparément : spécification des contrats d'API nécessaires au dashboard (liste des tâches, détail, actions), maquettage éventuel, bootstrap de l'application — chantier séparé de cette démo backend.
