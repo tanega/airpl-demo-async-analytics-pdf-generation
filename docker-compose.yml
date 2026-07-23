@@ -24,6 +24,7 @@ services:
     volumes:
       - ./app:/code/app
       - ./data:/code/data:ro
+      - db-data:/code/var/db
 
   beat:
     build: .
@@ -34,3 +35,6 @@ services:
     volumes:
       - ./app:/code/app
       - ./data:/code/data:ro
+
+volumes:
+  db-data:

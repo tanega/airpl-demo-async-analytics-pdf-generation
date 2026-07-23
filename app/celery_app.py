@@ -1,4 +1,5 @@
 from celery import Celery
+from celery.schedules import crontab
 
 from app.core.config import get_settings
 
@@ -8,7 +9,11 @@ celery_app = Celery(
     "airpl_reports",
     broker=settings.redis_url,
     backend=settings.redis_url,
-    include=["app.tasks.periodic"],
+    include=[
+        "app.tasks.periodic",
+        "app.tasks.bootstrap",
+        "app.tasks.hourly",
+    ],
 )
 
 celery_app.conf.update(
@@ -19,11 +24,9 @@ celery_app.conf.update(
     enable_utc=True,
 )
 
-# Preuve de fonctionnement Beat pour le socle — remplacé par la vraie
-# planification horaire dans l'Épic 2 (cf. ROADMAP.md §6).
 celery_app.conf.beat_schedule = {
-    "ping-every-minute": {
-        "task": "tasks.ping",
-        "schedule": 60.0,
+    "generate-hourly-readings": {
+        "task": "tasks.generate_hourly_readings",
+        "schedule": crontab(minute=0),
     },
 }

@@ -8,6 +8,7 @@ class Settings(BaseSettings):
 
     redis_url: str = "redis://localhost:6379/0"
     environment: str = "local"
+    db_path: str = "var/db/reports.db"
 
 
 @lru_cache
