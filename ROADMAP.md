@@ -162,7 +162,7 @@ Tâches Celery pour le rapport hebdomadaire (7 derniers jours complets) et mensu
 Endpoints FastAPI : déclenchement manuel, consultation de l'historique, suivi du statut d'une tâche, récupération du PDF généré. Documentation OpenAPI.
 
 ### Épic 6 — Stockage et traçabilité
-Mise en place du stockage des PDFs (local puis migration S3/MinIO), modèle de métadonnées (date, période, statut, durée, taille, chemin).
+Modèle de métadonnées (table `report_runs` : date, période, statut, durée, taille, chemin, message d'erreur) alimenté par les tâches Celery de l'Épic 4 — succès et échecs consignés. Stockage des PDFs local (`var/reports/`, cf. Épic 4) ; migration S3/MinIO laissée en évolution (§4, hors périmètre démo). `app/reports_history.py` expose `list_runs()`, prêt à être consommé par l'endpoint d'historique de l'Épic 5.
 
 ### Épic 7 — Observabilité
 Intégration de Flower pour le monitoring technique des workers/queues. Mise en place du endpoint de suivi consommable par le futur dashboard (statuts, progress, historique).

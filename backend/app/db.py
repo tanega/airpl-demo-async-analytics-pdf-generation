@@ -35,6 +35,22 @@ CREATE TABLE IF NOT EXISTS hourly_readings (
 
 CREATE INDEX IF NOT EXISTS idx_hourly_readings_insee_recorded
     ON hourly_readings (insee_code, recorded_at);
+
+CREATE TABLE IF NOT EXISTS report_runs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    report_type TEXT NOT NULL,
+    period_start TEXT NOT NULL,
+    period_end TEXT NOT NULL,
+    status TEXT NOT NULL,
+    started_at TEXT NOT NULL,
+    duration_seconds REAL NOT NULL,
+    file_path TEXT,
+    file_size_bytes INTEGER,
+    error_message TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_report_runs_type_started
+    ON report_runs (report_type, started_at);
 """
 
 

@@ -1,0 +1,60 @@
+from datetime import datetime
+from pathlib import Path
+
+from app.db import get_connection, init_db
+
+
+def record_run(
+    report_type: str,
+    period_start: str,
+    period_end: str,
+    status: str,
+    started_at: datetime,
+    duration_seconds: float,
+    file_path: str | None = None,
+    error_message: str | None = None,
+) -> int:
+    file_size_bytes = Path(file_path).stat().st_size if file_path else None
+
+    init_db()
+    conn = get_connection()
+    try:
+        cursor = conn.execute(
+            """
+            INSERT INTO report_runs (
+                report_type, period_start, period_end, status, started_at,
+                duration_seconds, file_path, file_size_bytes, error_message
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                report_type,
+                period_start,
+                period_end,
+                status,
+                started_at.isoformat(),
+                duration_seconds,
+                file_path,
+                file_size_bytes,
+                error_message,
+            ),
+        )
+        conn.commit()
+        return cursor.lastrowid
+    finally:
+        conn.close()
+
+
+def list_runs(report_type: str | None = None, limit: int = 50) -> list[dict]:
+    conn = get_connection()
+    try:
+        query = "SELECT * FROM report_runs"
+        params: tuple = ()
+        if report_type:
+            query += " WHERE report_type = ?"
+            params = (report_type,)
+        query += " ORDER BY started_at DESC LIMIT ?"
+        params = (*params, limit)
+        rows = conn.execute(query, params).fetchall()
+        return [dict(row) for row in rows]
+    finally:
+        conn.close()

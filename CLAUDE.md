@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## État du projet
 
-**`ROADMAP.md` est la source de vérité** pour l'architecture cible, la stack et le découpage en épics — le lire avant toute implémentation. Épics 1 (socle), 2 (référentiel + pipeline horaire), 3 (template Quarto) et 4 (orchestration Celery) implémentés dans `backend/`.
+**`ROADMAP.md` est la source de vérité** pour l'architecture cible, la stack et le découpage en épics — le lire avant toute implémentation. Épics 1 (socle), 2 (référentiel + pipeline horaire), 3 (template Quarto), 4 (orchestration Celery) et 6 (traçabilité) implémentés dans `backend/`.
 
 Résumé : démo backend qui génère automatiquement des rapports PDF (hebdo/mensuel) à partir de données quotidiennes, via un pipeline asynchrone distribué (FastAPI + Celery + Redis + Quarto/Typst). Voir `ROADMAP.md` §1-2 pour le périmètre exact, §4 pour la stack et les alternatives écartées, §5 pour le schéma d'architecture, §6 pour les épics.
 
@@ -43,7 +43,11 @@ Trois queues Celery dédiées, un worker Docker par queue (cf. `docker-compose.y
 - `reports-weekly` (`worker-weekly`) — `tasks.generate_weekly_report` (7 derniers jours complets), lundi 2h.
 - `reports-monthly` (`worker-monthly`) — `tasks.generate_monthly_report` (mois courant), 1er du mois 3h.
 
-`app/tasks/reports.py` appelle `quarto` en subprocess puis déplace le PDF vers `var/reports/` avec `shutil.move` (pas un simple rename : `reports/` et `var/reports/` sont deux volumes Docker distincts, un rename direct échoue en cross-device). Pas encore de métadonnées/traçabilité sur ces PDFs (prévu Épic 6).
+`app/tasks/reports.py` appelle `quarto` en subprocess puis déplace le PDF vers `var/reports/` avec `shutil.move` (pas un simple rename : `reports/` et `var/reports/` sont deux volumes Docker distincts, un rename direct échoue en cross-device).
+
+### Traçabilité des rapports (Épic 6)
+
+Table `report_runs` (SQLite, cf. `app/db.py`) : un enregistrement par exécution de `generate_weekly_report`/`generate_monthly_report` — `report_type`, `period_start`/`period_end`, `status` (`success`/`failed`), `started_at`, `duration_seconds`, `file_path`, `file_size_bytes`, `error_message`. Écrit par `app/reports_history.record_run()` (succès **et** échecs — l'exception est aussi re-levée pour que Celery reflète l'échec). Lecture via `list_runs()`, pensé pour être consommé par l'endpoint d'historique de l'Épic 5 (pas encore implémenté).
 
 ### Rendu des rapports Quarto (Épic 3)
 
