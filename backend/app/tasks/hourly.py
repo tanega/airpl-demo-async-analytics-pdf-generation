@@ -4,13 +4,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from app.celery_app import celery_app
+from app.core.config import get_settings
 from app.db import get_connection, init_db
 
-ATMO_CSV_PATH = (
-    Path(__file__).resolve().parent.parent.parent
-    / "data"
-    / "indice_ATMO_2026-1-1_2026-7-22_commune.csv"
-)
+
+def _atmo_csv_path() -> Path:
+    return Path(get_settings().data_dir) / "indice_ATMO_2026-1-1_2026-7-22_commune.csv"
 
 QUALIFICATIF_SCORES = {
     "bon": 1,
@@ -24,13 +23,13 @@ SCORE_QUALIFICATIFS = {score: label for label, score in QUALIFICATIF_SCORES.item
 
 
 def _load_rows_for_date(target_date: str) -> list[dict[str, str]]:
-    with ATMO_CSV_PATH.open(encoding="utf-8-sig") as f:
+    with _atmo_csv_path().open(encoding="utf-8-sig") as f:
         reader = csv.DictReader(f, delimiter=";")
         return [row for row in reader if row["date"] == target_date]
 
 
 def _latest_available_date() -> str:
-    with ATMO_CSV_PATH.open(encoding="utf-8-sig") as f:
+    with _atmo_csv_path().open(encoding="utf-8-sig") as f:
         reader = csv.DictReader(f, delimiter=";")
         return max(row["date"] for row in reader)
 
