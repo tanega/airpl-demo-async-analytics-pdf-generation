@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     db_path: str = "var/db/reports.db"
     data_dir: str = "../data"
     s3_endpoint_url: str = "http://localhost:9000"
+    s3_public_endpoint_url: str = "http://localhost:9000"
     s3_access_key: str = "minioadmin"
     s3_secret_key: str = "minioadmin"
     s3_bucket: str = "reports"
